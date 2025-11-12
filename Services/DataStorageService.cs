@@ -57,17 +57,34 @@ public class DataStorageService
 
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         
-        // Удаляем старые заказы для этих предметов (старше 1 часа)
+        // Удаляем только дубликаты за текущий час (чтобы не накапливать одинаковые данные)
         var itemIds = orders.Select(o => o.ItemId).Distinct().ToList();
-        var cutoffTime = DateTime.UtcNow.AddHours(-1);
+        var now = DateTime.UtcNow;
+        var hourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc);
+        var hourEnd = hourStart.AddHours(1);
         
-        var oldOrders = await context.Orders
-            .Where(o => itemIds.Contains(o.ItemId) && o.CollectedAt < cutoffTime)
+        // Удаляем заказы за текущий час для этих предметов (чтобы обновить данные)
+        var duplicateOrders = await context.Orders
+            .Where(o => itemIds.Contains(o.ItemId) && 
+                       o.CollectedAt >= hourStart && 
+                       o.CollectedAt < hourEnd)
             .ToListAsync(cancellationToken);
         
-        if (oldOrders.Count > 0)
+        if (duplicateOrders.Count > 0)
         {
-            context.Orders.RemoveRange(oldOrders);
+            context.Orders.RemoveRange(duplicateOrders);
+        }
+        
+        // Удаляем очень старые данные (старше 30 дней) для экономии места
+        var oldCutoff = DateTime.UtcNow.AddDays(-30);
+        var veryOldOrders = await context.Orders
+            .Where(o => o.CollectedAt < oldCutoff)
+            .ToListAsync(cancellationToken);
+        
+        if (veryOldOrders.Count > 0)
+        {
+            context.Orders.RemoveRange(veryOldOrders);
+            _logger.LogInformation("Removed {Count} old orders (older than 30 days)", veryOldOrders.Count);
         }
         
         // Добавляем новые заказы
@@ -106,6 +123,77 @@ public class DataStorageService
             ["totalSellOrders"] = totalSellOrders,
             ["lastUpdate"] = lastUpdate
         };
+    }
+
+    public async Task<List<object>> GetOrdersByTimeGroupingAsync(
+        int itemId, 
+        bool isBuyOrder, 
+        string grouping = "hour",
+        int days = 7,
+        CancellationToken cancellationToken = default)
+    {
+        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        
+        var cutoffDate = DateTime.UtcNow.AddDays(-days);
+        
+        var orders = await context.Orders
+            .Where(o => o.ItemId == itemId && 
+                       o.IsBuyOrder == isBuyOrder && 
+                       o.CollectedAt >= cutoffDate)
+            .OrderBy(o => o.CollectedAt)
+            .ToListAsync(cancellationToken);
+
+        var grouped = grouping.ToLower() switch
+        {
+            "hour" => orders.GroupBy(o => new DateTime(
+                o.CollectedAt.Year, 
+                o.CollectedAt.Month, 
+                o.CollectedAt.Day, 
+                o.CollectedAt.Hour, 
+                0, 0, DateTimeKind.Utc)),
+            "day" => orders.GroupBy(o => new DateTime(
+                o.CollectedAt.Year, 
+                o.CollectedAt.Month, 
+                o.CollectedAt.Day, 
+                0, 0, 0, DateTimeKind.Utc)),
+            _ => orders.GroupBy(o => new DateTime(
+                o.CollectedAt.Year, 
+                o.CollectedAt.Month, 
+                o.CollectedAt.Day, 
+                o.CollectedAt.Hour, 
+                0, 0, DateTimeKind.Utc))
+        };
+
+        return grouped.Select(g => new
+        {
+            time = g.Key,
+            avgPrice = g.Average(o => o.Price),
+            minPrice = g.Min(o => o.Price),
+            maxPrice = g.Max(o => o.Price),
+            totalQuantity = g.Sum(o => o.Quantity),
+            orderCount = g.Count()
+        }).Cast<object>().ToList();
+    }
+
+    public async Task<List<object>> GetPriceHistoryAsync(
+        int itemId,
+        bool isBuyOrder,
+        int days = 7,
+        CancellationToken cancellationToken = default)
+    {
+        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        
+        var cutoffDate = DateTime.UtcNow.AddDays(-days);
+        
+        var orders = await context.Orders
+            .Where(o => o.ItemId == itemId && 
+                       o.IsBuyOrder == isBuyOrder && 
+                       o.CollectedAt >= cutoffDate)
+            .OrderBy(o => o.CollectedAt)
+            .Select(o => new { o.Price, o.Quantity, o.CollectedAt })
+            .ToListAsync(cancellationToken);
+
+        return orders.Cast<object>().ToList();
     }
 }
 

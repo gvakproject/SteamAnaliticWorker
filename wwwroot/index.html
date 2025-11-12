@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Steam Analytics Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -20,7 +21,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
         }
 
@@ -30,11 +31,43 @@
             padding: 20px;
             margin-bottom: 20px;
             box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         .header h1 {
             color: #667eea;
-            margin-bottom: 10px;
+            margin: 0;
+        }
+
+        .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: background 0.3s;
+        }
+
+        .btn:hover {
+            background: #5568d3;
+        }
+
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
         }
 
         .summary {
@@ -61,76 +94,6 @@
             font-size: 24px;
             font-weight: bold;
             color: #667eea;
-        }
-
-        .items-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 20px;
-        }
-
-        .item-card {
-            background: white;
-            border-radius: 10px;
-            padding: 20px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-            transition: transform 0.2s;
-        }
-
-        .item-card:hover {
-            transform: translateY(-5px);
-        }
-
-        .item-card h3 {
-            color: #667eea;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-
-        .orders-section {
-            margin-top: 15px;
-        }
-
-        .orders-section h4 {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 8px;
-        }
-
-        .order-item {
-            display: flex;
-            justify-content: space-between;
-            padding: 5px 0;
-            border-bottom: 1px solid #eee;
-            font-size: 12px;
-        }
-
-        .order-item:last-child {
-            border-bottom: none;
-        }
-
-        .price {
-            font-weight: bold;
-            color: #667eea;
-        }
-
-        .quantity {
-            color: #666;
-        }
-
-        .loading {
-            text-align: center;
-            padding: 40px;
-            color: white;
-            font-size: 18px;
-        }
-
-        .error {
-            background: #ff6b6b;
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            margin-bottom: 20px;
         }
 
         .add-item-form {
@@ -170,24 +133,124 @@
             border-color: #667eea;
         }
 
-        .btn {
-            background: #667eea;
-            color: white;
-            border: none;
+        .item-section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .item-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #eee;
+        }
+
+        .item-header h3 {
+            color: #667eea;
+            margin: 0;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
             padding: 10px 20px;
+            background: #f0f0f0;
+            border: none;
             border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: 500;
+            transition: all 0.3s;
         }
 
-        .btn:hover {
-            background: #5568d3;
+        .tab.active {
+            background: #667eea;
+            color: white;
         }
 
-        .refresh-btn {
-            float: right;
-            margin-top: -40px;
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            margin-bottom: 20px;
+        }
+
+        .data-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+
+        .data-table th,
+        .data-table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #eee;
+        }
+
+        .data-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            color: #667eea;
+        }
+
+        .data-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: white;
+            font-size: 18px;
+        }
+
+        .error {
+            background: #ff6b6b;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            gap: 5px;
+            align-items: center;
+        }
+
+        .control-group label {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .control-group select {
+            padding: 8px;
+            border: 2px solid #eee;
+            border-radius: 5px;
+            font-size: 14px;
         }
     </style>
 </head>
@@ -195,8 +258,12 @@
     <div class="container">
         <div class="header">
             <h1>🎮 Steam Analytics Dashboard</h1>
-            <button class="btn refresh-btn" onclick="loadData()">🔄 Обновить</button>
-            <div style="clear: both;"></div>
+            <div>
+                <button class="btn btn-success" onclick="triggerCollection()" id="collectBtn">
+                    🔄 Запустить сбор данных
+                </button>
+                <button class="btn" onclick="loadData()">🔄 Обновить</button>
+            </div>
         </div>
 
         <div id="error" class="error" style="display: none;"></div>
@@ -236,10 +303,12 @@
         </div>
 
         <div id="loading" class="loading">Загрузка данных...</div>
-        <div id="items" class="items-grid" style="display: none;"></div>
+        <div id="items" style="display: none;"></div>
     </div>
 
     <script>
+        let charts = {};
+
         async function loadData() {
             try {
                 document.getElementById('error').style.display = 'none';
@@ -254,51 +323,114 @@
                 document.getElementById('totalBuyOrders').textContent = summary.totalBuyOrders || 0;
                 document.getElementById('totalSellOrders').textContent = summary.totalSellOrders || 0;
                 
-                if (summary.lastUpdate) {
+                if (summary.lastUpdate && summary.lastUpdate !== '0001-01-01T00:00:00') {
                     const date = new Date(summary.lastUpdate);
                     document.getElementById('lastUpdate').textContent = date.toLocaleString('ru-RU');
+                } else {
+                    document.getElementById('lastUpdate').textContent = 'Нет данных';
                 }
 
                 // Загружаем предметы
                 const itemsRes = await fetch('/api/analytics/items');
                 const items = await itemsRes.json();
 
+                // Очищаем старые графики
+                Object.values(charts).forEach(chart => chart.destroy());
+                charts = {};
+
                 // Загружаем аналитику для каждого предмета
                 const itemsHtml = await Promise.all(items.map(async (item) => {
                     const analyticsRes = await fetch(`/api/analytics/items/${item.id}/analytics`);
                     const analytics = await analyticsRes.json();
                     
+                    const timeSeriesRes = await fetch(`/api/analytics/items/${item.id}/time-series?grouping=hour&days=7`);
+                    const timeSeries = await timeSeriesRes.json();
+                    
                     return `
-                        <div class="item-card">
-                            <h3>${item.name}</h3>
-                            <div style="font-size: 12px; color: #999; margin-bottom: 15px;">
-                                ID: ${item.itemId} | Обновлено: ${new Date(item.lastUpdated).toLocaleString('ru-RU')}
+                        <div class="item-section">
+                            <div class="item-header">
+                                <h3>${item.name}</h3>
+                                <div style="font-size: 12px; color: #999;">
+                                    ID: ${item.itemId} | Обновлено: ${new Date(item.lastUpdated).toLocaleString('ru-RU')}
+                                </div>
                             </div>
-                            
-                            <div class="orders-section">
-                                <h4>🛒 Заказы на покупку (${analytics.buyOrders.count})</h4>
-                                ${analytics.buyOrders.orders.length > 0 
-                                    ? analytics.buyOrders.orders.map(o => `
-                                        <div class="order-item">
-                                            <span class="price">${o.price.toFixed(2)} ₸</span>
-                                            <span class="quantity">${o.quantity} шт.</span>
-                                        </div>
-                                    `).join('')
-                                    : '<div style="color: #999; font-size: 12px;">Нет данных</div>'
-                                }
+
+                            <div class="tabs">
+                                <button class="tab active" onclick="switchTab(${item.id}, 'overview')">Обзор</button>
+                                <button class="tab" onclick="switchTab(${item.id}, 'charts')">Графики</button>
+                                <button class="tab" onclick="switchTab(${item.id}, 'table')">Таблица</button>
                             </div>
-                            
-                            <div class="orders-section">
-                                <h4>💰 Заказы на продажу (${analytics.sellOrders.count})</h4>
-                                ${analytics.sellOrders.orders.length > 0 
-                                    ? analytics.sellOrders.orders.map(o => `
-                                        <div class="order-item">
-                                            <span class="price">${o.price.toFixed(2)} ₸</span>
-                                            <span class="quantity">${o.quantity} шт.</span>
-                                        </div>
-                                    `).join('')
-                                    : '<div style="color: #999; font-size: 12px;">Нет данных</div>'
-                                }
+
+                            <div id="item-${item.id}-overview" class="tab-content active">
+                                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                    <div>
+                                        <h4>🛒 Заказы на покупку</h4>
+                                        <p>Количество: ${analytics.buyOrders.count}</p>
+                                        <p>Мин. цена: ${analytics.buyOrders.minPrice ? analytics.buyOrders.minPrice.toFixed(2) + ' ₸' : 'Нет данных'}</p>
+                                        <p>Макс. цена: ${analytics.buyOrders.maxPrice ? analytics.buyOrders.maxPrice.toFixed(2) + ' ₸' : 'Нет данных'}</p>
+                                        <p>Всего: ${analytics.buyOrders.totalQuantity} шт.</p>
+                                    </div>
+                                    <div>
+                                        <h4>💰 Заказы на продажу</h4>
+                                        <p>Количество: ${analytics.sellOrders.count}</p>
+                                        <p>Мин. цена: ${analytics.sellOrders.minPrice ? analytics.sellOrders.minPrice.toFixed(2) + ' ₸' : 'Нет данных'}</p>
+                                        <p>Макс. цена: ${analytics.sellOrders.maxPrice ? analytics.sellOrders.maxPrice.toFixed(2) + ' ₸' : 'Нет данных'}</p>
+                                        <p>Всего: ${analytics.sellOrders.totalQuantity} шт.</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div id="item-${item.id}-charts" class="tab-content">
+                                <div class="controls">
+                                    <div class="control-group">
+                                        <label>Группировка:</label>
+                                        <select id="grouping-${item.id}" onchange="updateCharts(${item.id})">
+                                            <option value="hour">По часам</option>
+                                            <option value="day">По дням</option>
+                                        </select>
+                                    </div>
+                                    <div class="control-group">
+                                        <label>Период:</label>
+                                        <select id="days-${item.id}" onchange="updateCharts(${item.id})">
+                                            <option value="1">1 день</option>
+                                            <option value="3">3 дня</option>
+                                            <option value="7" selected>7 дней</option>
+                                            <option value="14">14 дней</option>
+                                            <option value="30">30 дней</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="priceChart-${item.id}"></canvas>
+                                </div>
+                                <div class="chart-container">
+                                    <canvas id="quantityChart-${item.id}"></canvas>
+                                </div>
+                            </div>
+
+                            <div id="item-${item.id}-table" class="tab-content">
+                                <div class="controls">
+                                    <div class="control-group">
+                                        <label>Группировка:</label>
+                                        <select id="table-grouping-${item.id}" onchange="updateTable(${item.id})">
+                                            <option value="hour">По часам</option>
+                                            <option value="day">По дням</option>
+                                        </select>
+                                    </div>
+                                    <div class="control-group">
+                                        <label>Период:</label>
+                                        <select id="table-days-${item.id}" onchange="updateTable(${item.id})">
+                                            <option value="1">1 день</option>
+                                            <option value="3">3 дня</option>
+                                            <option value="7" selected>7 дней</option>
+                                            <option value="14">14 дней</option>
+                                            <option value="30">30 дней</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div id="table-content-${item.id}">
+                                    <p>Загрузка таблицы...</p>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -306,11 +438,232 @@
 
                 document.getElementById('items').innerHTML = itemsHtml.join('');
                 document.getElementById('loading').style.display = 'none';
-                document.getElementById('items').style.display = 'grid';
+                document.getElementById('items').style.display = 'block';
+
+                // Инициализируем графики и таблицы для всех предметов
+                for (const item of items) {
+                    await updateCharts(item.id);
+                    await updateTable(item.id);
+                }
             } catch (error) {
                 document.getElementById('error').textContent = 'Ошибка загрузки данных: ' + error.message;
                 document.getElementById('error').style.display = 'block';
                 document.getElementById('loading').style.display = 'none';
+            }
+        }
+
+        function switchTab(itemId, tabName) {
+            // Находим родительский элемент
+            const itemSection = document.getElementById(`item-${itemId}-overview`).closest('.item-section');
+            
+            // Скрываем все вкладки
+            itemSection.querySelectorAll('.tab-content').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Показываем выбранную
+            document.getElementById(`item-${itemId}-${tabName}`).classList.add('active');
+            
+            // Обновляем кнопки вкладок
+            itemSection.querySelectorAll('.tab').forEach((btn, idx) => {
+                const tabs = ['overview', 'charts', 'table'];
+                btn.classList.toggle('active', tabs[idx] === tabName);
+            });
+        }
+
+        async function updateCharts(itemId) {
+            const grouping = document.getElementById(`grouping-${itemId}`).value;
+            const days = document.getElementById(`days-${itemId}`).value;
+            
+            try {
+                const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
+                const data = await res.json();
+                
+                const buyData = data.find(d => d.type === 'buy')?.data || [];
+                const sellData = data.find(d => d.type === 'sell')?.data || [];
+                
+                // График цен
+                const priceCtx = document.getElementById(`priceChart-${itemId}`);
+                if (charts[`price-${itemId}`]) {
+                    charts[`price-${itemId}`].destroy();
+                }
+                
+                charts[`price-${itemId}`] = new Chart(priceCtx, {
+                    type: 'line',
+                    data: {
+                        labels: buyData.map(d => new Date(d.time).toLocaleString('ru-RU')),
+                        datasets: [
+                            {
+                                label: 'Средняя цена покупки',
+                                data: buyData.map(d => d.avgPrice),
+                                borderColor: 'rgb(75, 192, 192)',
+                                backgroundColor: 'rgba(75, 192, 192, 0.2)',
+                                tension: 0.1
+                            },
+                            {
+                                label: 'Средняя цена продажи',
+                                data: sellData.map(d => d.avgPrice),
+                                borderColor: 'rgb(255, 99, 132)',
+                                backgroundColor: 'rgba(255, 99, 132, 0.2)',
+                                tension: 0.1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Динамика цен'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: false,
+                                ticks: {
+                                    callback: function(value) {
+                                        return value.toFixed(2) + ' ₸';
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+                
+                // График количества
+                const quantityCtx = document.getElementById(`quantityChart-${itemId}`);
+                if (charts[`quantity-${itemId}`]) {
+                    charts[`quantity-${itemId}`].destroy();
+                }
+                
+                charts[`quantity-${itemId}`] = new Chart(quantityCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: buyData.map(d => new Date(d.time).toLocaleString('ru-RU')),
+                        datasets: [
+                            {
+                                label: 'Количество заказов на покупку',
+                                data: buyData.map(d => d.totalQuantity),
+                                backgroundColor: 'rgba(75, 192, 192, 0.6)'
+                            },
+                            {
+                                label: 'Количество заказов на продажу',
+                                data: sellData.map(d => d.totalQuantity),
+                                backgroundColor: 'rgba(255, 99, 132, 0.6)'
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Количество заказов'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating charts:', error);
+            }
+        }
+
+        async function updateTable(itemId) {
+            const grouping = document.getElementById(`table-grouping-${itemId}`).value;
+            const days = document.getElementById(`table-days-${itemId}`).value;
+            
+            try {
+                const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
+                const data = await res.json();
+                
+                const buyData = data.find(d => d.type === 'buy')?.data || [];
+                const sellData = data.find(d => d.type === 'sell')?.data || [];
+                
+                // Объединяем данные по времени
+                const timeMap = new Map();
+                
+                buyData.forEach(d => {
+                    const key = d.time;
+                    if (!timeMap.has(key)) {
+                        timeMap.set(key, { time: d.time, buy: d, sell: null });
+                    } else {
+                        timeMap.get(key).buy = d;
+                    }
+                });
+                
+                sellData.forEach(d => {
+                    const key = d.time;
+                    if (!timeMap.has(key)) {
+                        timeMap.set(key, { time: d.time, buy: null, sell: d });
+                    } else {
+                        timeMap.get(key).sell = d;
+                    }
+                });
+                
+                const tableData = Array.from(timeMap.values()).sort((a, b) => 
+                    new Date(a.time) - new Date(b.time)
+                );
+                
+                const tableHtml = `
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Время</th>
+                                <th>Покупка - Средняя цена</th>
+                                <th>Покупка - Количество</th>
+                                <th>Продажа - Средняя цена</th>
+                                <th>Продажа - Количество</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableData.map(row => `
+                                <tr>
+                                    <td>${new Date(row.time).toLocaleString('ru-RU')}</td>
+                                    <td>${row.buy ? row.buy.avgPrice.toFixed(2) + ' ₸' : '-'}</td>
+                                    <td>${row.buy ? row.buy.totalQuantity : '-'}</td>
+                                    <td>${row.sell ? row.sell.avgPrice.toFixed(2) + ' ₸' : '-'}</td>
+                                    <td>${row.sell ? row.sell.totalQuantity : '-'}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+                
+                document.getElementById(`table-content-${itemId}`).innerHTML = tableHtml;
+            } catch (error) {
+                document.getElementById(`table-content-${itemId}`).innerHTML = 
+                    '<p style="color: red;">Ошибка загрузки таблицы: ' + error.message + '</p>';
+            }
+        }
+
+        async function triggerCollection() {
+            const btn = document.getElementById('collectBtn');
+            btn.disabled = true;
+            btn.textContent = '⏳ Сбор данных...';
+            
+            try {
+                const res = await fetch('/api/analytics/collect', {
+                    method: 'POST'
+                });
+                
+                if (res.ok) {
+                    alert('Сбор данных запущен! Данные появятся через несколько секунд.');
+                    setTimeout(() => loadData(), 5000);
+                } else {
+                    alert('Ошибка при запуске сбора данных');
+                }
+            } catch (error) {
+                alert('Ошибка: ' + error.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '🔄 Запустить сбор данных';
             }
         }
 
@@ -349,4 +702,3 @@
     </script>
 </body>
 </html>
-
