@@ -22,15 +22,22 @@ public class SteamAnalyticsService
     public async Task<List<Order>> GetItemOrdersAsync(Item item, bool isBuyOrder, CancellationToken cancellationToken = default)
     {
         var orders = new List<Order>();
+        var orderType = isBuyOrder ? "buy" : "sell";
+        var url = $"https://steamcommunity.com/market/itemordershistogram?" +
+            $"country=KZ" +
+            $"&language=russian" +
+            $"&currency=37" +
+            $"&item_nameid={item.ItemId}" +
+            $"&norender=1";
         
         try
         {
-            var url = $"https://steamcommunity.com/market/itemordershistogram?" +
-                $"country=KZ" +
-                $"&language=russian" +
-                $"&currency=37" +
-                $"&item_nameid={item.ItemId}" +
-                $"&norender=1";
+            _logger.LogInformation(
+                "Requesting {Type} orders for {ItemName} (ItemId: {ItemId}) from Steam: {Url}",
+                orderType,
+                item.Name,
+                item.ItemId,
+                url);
 
             var response = await GetResponseAsync(url, cancellationToken: cancellationToken);
             var content = await response.Content.ReadAsStreamAsync(cancellationToken);
@@ -45,10 +52,24 @@ public class SteamAnalyticsService
                 isBuyOrder ? "buy" : "sell",
                 item.Name,
                 item.ItemId);
+
+            if (orders.Count == 0)
+            {
+                _logger.LogWarning(
+                    "Steam returned 0 {Type} orders for {ItemName} (ItemId: {ItemId})",
+                    orderType,
+                    item.Name,
+                    item.ItemId);
+            }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error getting orders for item {ItemName} (ItemId: {ItemId})", item.Name, item.ItemId);
+            _logger.LogError(
+                ex,
+                "Error getting {Type} orders for item {ItemName} (ItemId: {ItemId}) from Steam",
+                orderType,
+                item.Name,
+                item.ItemId);
         }
 
         return orders;
@@ -107,6 +128,7 @@ public class SteamAnalyticsService
                 var response = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
                 response.EnsureSuccessStatusCode();
                 
+                _logger.LogDebug("Steam response headers: {Headers}", response.Headers.ToString());
                 return response;
             }
             catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)

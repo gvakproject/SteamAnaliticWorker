@@ -57,8 +57,11 @@ public class DataStorageService
 
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
         
-        // Удаляем только дубликаты за текущий час (чтобы не накапливать одинаковые данные)
+        // Все заказы в списке относятся к одному типу (buy/sell)
+        var isBuyOrderBatch = orders.First().IsBuyOrder;
         var itemIds = orders.Select(o => o.ItemId).Distinct().ToList();
+
+        // Удаляем только дубликаты за текущий час (чтобы не накапливать одинаковые данные)
         var now = DateTime.UtcNow;
         var hourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc);
         var hourEnd = hourStart.AddHours(1);
@@ -66,6 +69,7 @@ public class DataStorageService
         // Удаляем заказы за текущий час для этих предметов (чтобы обновить данные)
         var duplicateOrders = await context.Orders
             .Where(o => itemIds.Contains(o.ItemId) && 
+                       o.IsBuyOrder == isBuyOrderBatch &&
                        o.CollectedAt >= hourStart && 
                        o.CollectedAt < hourEnd)
             .ToListAsync(cancellationToken);

@@ -88,15 +88,16 @@ public class AnalyticsController : ControllerBase
                 return NotFound(new { error = "Item not found" });
             }
 
+            // SQLite не поддерживает сортировку по decimal в ORDER BY, поэтому загружаем данные и сортируем в памяти
             var buyOrders = await context.Orders
                 .Where(o => o.ItemId == itemId && o.IsBuyOrder)
-                .OrderBy(o => o.Price)
                 .ToListAsync(cancellationToken);
+            buyOrders = buyOrders.OrderBy(o => o.Price).ToList();
 
             var sellOrders = await context.Orders
                 .Where(o => o.ItemId == itemId && !o.IsBuyOrder)
-                .OrderByDescending(o => o.Price)
                 .ToListAsync(cancellationToken);
+            sellOrders = sellOrders.OrderByDescending(o => o.Price).ToList();
 
             var analytics = new
             {
