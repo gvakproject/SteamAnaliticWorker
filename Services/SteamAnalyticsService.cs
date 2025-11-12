@@ -101,12 +101,7 @@ public class SteamAnalyticsService
                 using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
                 
-                using var req = new HttpRequestMessage(HttpMethod.Get, url)
-                {
-                    Version = HttpVersion.Version11,
-                    VersionPolicy = HttpVersionPolicy.RequestVersionOrLower
-                };
-                
+                using var req = new HttpRequestMessage(HttpMethod.Get, url);
                 req.Headers.ConnectionClose = true;
                 
                 var response = await _httpClient.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token);
