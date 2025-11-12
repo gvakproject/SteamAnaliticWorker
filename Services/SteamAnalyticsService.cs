@@ -1,3 +1,4 @@
+using System.Net.Http;
 using System.Text.Json;
 using SteamAnaliticWorker.Models;
 
@@ -31,7 +32,7 @@ public class SteamAnalyticsService
                 $"&item_nameid={item.ItemId}" +
                 $"&norender=1";
 
-            var response = await GetResponseAsync(url, cancellationToken);
+            var response = await GetResponseAsync(url, cancellationToken: cancellationToken);
             var content = await response.Content.ReadAsStreamAsync(cancellationToken);
             var json = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken);
 
@@ -53,7 +54,7 @@ public class SteamAnalyticsService
         return orders;
     }
 
-    private async Task<List<Order>> GetOrdersAsync(JsonDocument json, string jsonProperty, int itemId, bool isBuyOrder)
+    private Task<List<Order>> GetOrdersAsync(JsonDocument json, string jsonProperty, int itemId, bool isBuyOrder)
     {
         var orders = new List<Order>();
         var now = DateTime.UtcNow;
@@ -84,7 +85,7 @@ public class SteamAnalyticsService
             }
         }
 
-        return orders;
+        return Task.FromResult(orders);
     }
 
     private async Task<HttpResponseMessage> GetResponseAsync(
