@@ -1,0 +1,17 @@
+# Render Blueprint для автоматического деплоя
+# Это опциональный файл - можно использовать для Infrastructure as Code
+
+services:
+  - type: web
+    name: steam-analytics-worker
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: starter # Минимальный план (0.1 CPU, 512 MB RAM)
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: DOTNET_GCHeapHardLimit
+        value: 400000000
+    healthCheckPath: /health
+
