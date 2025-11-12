@@ -454,25 +454,59 @@
                     `;
                 }));
 
-                document.getElementById('items').innerHTML = itemsHtml.join('');
-                document.getElementById('loading').style.display = 'none';
-                document.getElementById('items').style.display = 'block';
+                const itemsContainer = document.getElementById('items');
+                const loadingElement = document.getElementById('loading');
+                
+                if (!itemsContainer) {
+                    throw new Error('Items container not found');
+                }
+                
+                itemsContainer.innerHTML = itemsHtml.join('');
+                if (loadingElement) {
+                    loadingElement.style.display = 'none';
+                }
+                itemsContainer.style.display = 'block';
 
                 // Инициализируем графики и таблицы для всех предметов
+                // Небольшая задержка, чтобы DOM успел обновиться
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 for (const item of items) {
-                    await updateCharts(item.id);
-                    await updateTable(item.id);
+                    try {
+                        await updateCharts(item.id);
+                        await updateTable(item.id);
+                    } catch (error) {
+                        console.error(`Error initializing charts/table for item ${item.id}:`, error);
+                    }
                 }
             } catch (error) {
-                document.getElementById('error').textContent = 'Ошибка загрузки данных: ' + error.message;
-                document.getElementById('error').style.display = 'block';
-                document.getElementById('loading').style.display = 'none';
+                const errorEl = document.getElementById('error');
+                const loadingEl = document.getElementById('loading');
+                
+                if (errorEl) {
+                    errorEl.textContent = 'Ошибка загрузки данных: ' + error.message;
+                    errorEl.style.display = 'block';
+                }
+                if (loadingEl) {
+                    loadingEl.style.display = 'none';
+                }
+                console.error('Error loading data:', error);
             }
         }
 
         function switchTab(itemId, tabName) {
             // Находим родительский элемент
-            const itemSection = document.getElementById(`item-${itemId}-overview`).closest('.item-section');
+            const overviewEl = document.getElementById(`item-${itemId}-overview`);
+            if (!overviewEl) {
+                console.warn(`Overview element not found for item ${itemId}`);
+                return;
+            }
+            
+            const itemSection = overviewEl.closest('.item-section');
+            if (!itemSection) {
+                console.warn(`Item section not found for item ${itemId}`);
+                return;
+            }
             
             // Скрываем все вкладки
             itemSection.querySelectorAll('.tab-content').forEach(el => {
@@ -480,7 +514,12 @@
             });
             
             // Показываем выбранную
-            document.getElementById(`item-${itemId}-${tabName}`).classList.add('active');
+            const targetTab = document.getElementById(`item-${itemId}-${tabName}`);
+            if (targetTab) {
+                targetTab.classList.add('active');
+            } else {
+                console.warn(`Tab ${tabName} not found for item ${itemId}`);
+            }
             
             // Обновляем кнопки вкладок
             itemSection.querySelectorAll('.tab').forEach((btn, idx) => {
@@ -490,8 +529,16 @@
         }
 
         async function updateCharts(itemId) {
-            const grouping = document.getElementById(`grouping-${itemId}`)?.value || 'hour';
-            const days = document.getElementById(`days-${itemId}`)?.value || '7';
+            const groupingEl = document.getElementById(`grouping-${itemId}`);
+            const daysEl = document.getElementById(`days-${itemId}`);
+            
+            if (!groupingEl || !daysEl) {
+                console.warn(`Chart controls not found for item ${itemId}, skipping`);
+                return;
+            }
+            
+            const grouping = groupingEl.value || 'hour';
+            const days = daysEl.value || '7';
             
             try {
                 const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
@@ -519,6 +566,11 @@
                 
                 // График цен
                 const priceCtx = document.getElementById(`priceChart-${itemId}`);
+                if (!priceCtx) {
+                    console.warn(`Price chart canvas not found for item ${itemId}`);
+                    return;
+                }
+                
                 if (charts[`price-${itemId}`]) {
                     charts[`price-${itemId}`].destroy();
                 }
@@ -568,6 +620,11 @@
                 
                 // График количества
                 const quantityCtx = document.getElementById(`quantityChart-${itemId}`);
+                if (!quantityCtx) {
+                    console.warn(`Quantity chart canvas not found for item ${itemId}`);
+                    return;
+                }
+                
                 if (charts[`quantity-${itemId}`]) {
                     charts[`quantity-${itemId}`].destroy();
                 }
@@ -611,20 +668,29 @@
         }
 
         async function updateTable(itemId) {
-            const grouping = document.getElementById(`table-grouping-${itemId}`)?.value || 'hour';
-            const days = document.getElementById(`table-days-${itemId}`)?.value || '7';
+            const groupingEl = document.getElementById(`table-grouping-${itemId}`);
+            const daysEl = document.getElementById(`table-days-${itemId}`);
+            const tableContentEl = document.getElementById(`table-content-${itemId}`);
+            
+            if (!groupingEl || !daysEl || !tableContentEl) {
+                console.warn(`Table controls or content not found for item ${itemId}, skipping`);
+                return;
+            }
+            
+            const grouping = groupingEl.value || 'hour';
+            const days = daysEl.value || '7';
             
             try {
                 const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
                 if (!res.ok) {
-                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                    tableContentEl.innerHTML = 
                         '<p style="color: red;">Ошибка загрузки данных</p>';
                     return;
                 }
                 
                 const text = await res.text();
                 if (!text || text.trim() === '') {
-                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                    tableContentEl.innerHTML = 
                         '<p>Нет данных для отображения</p>';
                     return;
                 }
@@ -633,7 +699,7 @@
                 try {
                     data = JSON.parse(text);
                 } catch (e) {
-                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                    tableContentEl.innerHTML = 
                         '<p style="color: red;">Ошибка парсинга данных</p>';
                     console.error(`Failed to parse JSON for table item ${itemId}:`, e);
                     return;
@@ -692,10 +758,21 @@
                     </table>
                 `;
                 
-                document.getElementById(`table-content-${itemId}`).innerHTML = tableHtml;
+                // Проверяем, что элемент все еще существует
+                const contentEl = document.getElementById(`table-content-${itemId}`);
+                if (contentEl) {
+                    contentEl.innerHTML = tableHtml;
+                } else {
+                    console.warn(`Table content element not found for item ${itemId}`);
+                }
             } catch (error) {
-                document.getElementById(`table-content-${itemId}`).innerHTML = 
-                    '<p style="color: red;">Ошибка загрузки таблицы: ' + error.message + '</p>';
+                const contentEl = document.getElementById(`table-content-${itemId}`);
+                if (contentEl) {
+                    contentEl.innerHTML = 
+                        '<p style="color: red;">Ошибка загрузки таблицы: ' + error.message + '</p>';
+                } else {
+                    console.error(`Error updating table for item ${itemId}:`, error);
+                }
             }
         }
 
