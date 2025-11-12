@@ -132,47 +132,60 @@ public class DataStorageService
         int days = 7,
         CancellationToken cancellationToken = default)
     {
-        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        
-        var cutoffDate = DateTime.UtcNow.AddDays(-days);
-        
-        var orders = await context.Orders
-            .Where(o => o.ItemId == itemId && 
-                       o.IsBuyOrder == isBuyOrder && 
-                       o.CollectedAt >= cutoffDate)
-            .OrderBy(o => o.CollectedAt)
-            .ToListAsync(cancellationToken);
-
-        var grouped = grouping.ToLower() switch
+        try
         {
-            "hour" => orders.GroupBy(o => new DateTime(
-                o.CollectedAt.Year, 
-                o.CollectedAt.Month, 
-                o.CollectedAt.Day, 
-                o.CollectedAt.Hour, 
-                0, 0, DateTimeKind.Utc)),
-            "day" => orders.GroupBy(o => new DateTime(
-                o.CollectedAt.Year, 
-                o.CollectedAt.Month, 
-                o.CollectedAt.Day, 
-                0, 0, 0, DateTimeKind.Utc)),
-            _ => orders.GroupBy(o => new DateTime(
-                o.CollectedAt.Year, 
-                o.CollectedAt.Month, 
-                o.CollectedAt.Day, 
-                o.CollectedAt.Hour, 
-                0, 0, DateTimeKind.Utc))
-        };
+            using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            
+            var cutoffDate = DateTime.UtcNow.AddDays(-days);
+            
+            var orders = await context.Orders
+                .Where(o => o.ItemId == itemId && 
+                           o.IsBuyOrder == isBuyOrder && 
+                           o.CollectedAt >= cutoffDate)
+                .OrderBy(o => o.CollectedAt)
+                .ToListAsync(cancellationToken);
 
-        return grouped.Select(g => new
+            if (orders.Count == 0)
+            {
+                return new List<object>();
+            }
+
+            var grouped = grouping.ToLower() switch
+            {
+                "hour" => orders.GroupBy(o => new DateTime(
+                    o.CollectedAt.Year, 
+                    o.CollectedAt.Month, 
+                    o.CollectedAt.Day, 
+                    o.CollectedAt.Hour, 
+                    0, 0, DateTimeKind.Utc)),
+                "day" => orders.GroupBy(o => new DateTime(
+                    o.CollectedAt.Year, 
+                    o.CollectedAt.Month, 
+                    o.CollectedAt.Day, 
+                    0, 0, 0, DateTimeKind.Utc)),
+                _ => orders.GroupBy(o => new DateTime(
+                    o.CollectedAt.Year, 
+                    o.CollectedAt.Month, 
+                    o.CollectedAt.Day, 
+                    o.CollectedAt.Hour, 
+                    0, 0, DateTimeKind.Utc))
+            };
+
+            return grouped.Select(g => new
+            {
+                time = g.Key,
+                avgPrice = g.Average(o => o.Price),
+                minPrice = g.Min(o => o.Price),
+                maxPrice = g.Max(o => o.Price),
+                totalQuantity = g.Sum(o => o.Quantity),
+                orderCount = g.Count()
+            }).Cast<object>().ToList();
+        }
+        catch (Exception ex)
         {
-            time = g.Key,
-            avgPrice = g.Average(o => o.Price),
-            minPrice = g.Min(o => o.Price),
-            maxPrice = g.Max(o => o.Price),
-            totalQuantity = g.Sum(o => o.Quantity),
-            orderCount = g.Count()
-        }).Cast<object>().ToList();
+            _logger.LogError(ex, "Error getting orders by time grouping for item {ItemId}", itemId);
+            return new List<object>();
+        }
     }
 
     public async Task<List<object>> GetPriceHistoryAsync(

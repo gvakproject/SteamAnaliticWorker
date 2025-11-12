@@ -317,6 +317,9 @@
 
                 // Загружаем summary
                 const summaryRes = await fetch('/api/analytics/summary');
+                if (!summaryRes.ok) {
+                    throw new Error(`HTTP error! status: ${summaryRes.status}`);
+                }
                 const summary = await summaryRes.json();
                 
                 document.getElementById('totalItems').textContent = summary.totalItems || 0;
@@ -332,6 +335,9 @@
 
                 // Загружаем предметы
                 const itemsRes = await fetch('/api/analytics/items');
+                if (!itemsRes.ok) {
+                    throw new Error(`HTTP error! status: ${itemsRes.status}`);
+                }
                 const items = await itemsRes.json();
 
                 // Очищаем старые графики
@@ -341,10 +347,22 @@
                 // Загружаем аналитику для каждого предмета
                 const itemsHtml = await Promise.all(items.map(async (item) => {
                     const analyticsRes = await fetch(`/api/analytics/items/${item.id}/analytics`);
+                    if (!analyticsRes.ok) {
+                        console.error(`Failed to load analytics for item ${item.id}`);
+                        return `<div class="item-section"><h3>${item.name}</h3><p>Ошибка загрузки данных</p></div>`;
+                    }
                     const analytics = await analyticsRes.json();
                     
                     const timeSeriesRes = await fetch(`/api/analytics/items/${item.id}/time-series?grouping=hour&days=7`);
-                    const timeSeries = await timeSeriesRes.json();
+                    let timeSeries = [];
+                    if (timeSeriesRes.ok) {
+                        try {
+                            timeSeries = await timeSeriesRes.json();
+                        } catch (e) {
+                            console.error(`Failed to parse time-series for item ${item.id}:`, e);
+                            timeSeries = [];
+                        }
+                    }
                     
                     return `
                         <div class="item-section">
@@ -472,12 +490,29 @@
         }
 
         async function updateCharts(itemId) {
-            const grouping = document.getElementById(`grouping-${itemId}`).value;
-            const days = document.getElementById(`days-${itemId}`).value;
+            const grouping = document.getElementById(`grouping-${itemId}`)?.value || 'hour';
+            const days = document.getElementById(`days-${itemId}`)?.value || '7';
             
             try {
                 const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
-                const data = await res.json();
+                if (!res.ok) {
+                    console.error(`Failed to load time-series for item ${itemId}: ${res.status}`);
+                    return;
+                }
+                
+                const text = await res.text();
+                if (!text || text.trim() === '') {
+                    console.warn(`Empty response for item ${itemId}`);
+                    return;
+                }
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    console.error(`Failed to parse JSON for item ${itemId}:`, e, text);
+                    return;
+                }
                 
                 const buyData = data.find(d => d.type === 'buy')?.data || [];
                 const sellData = data.find(d => d.type === 'sell')?.data || [];
@@ -576,12 +611,33 @@
         }
 
         async function updateTable(itemId) {
-            const grouping = document.getElementById(`table-grouping-${itemId}`).value;
-            const days = document.getElementById(`table-days-${itemId}`).value;
+            const grouping = document.getElementById(`table-grouping-${itemId}`)?.value || 'hour';
+            const days = document.getElementById(`table-days-${itemId}`)?.value || '7';
             
             try {
                 const res = await fetch(`/api/analytics/items/${itemId}/time-series?grouping=${grouping}&days=${days}`);
-                const data = await res.json();
+                if (!res.ok) {
+                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                        '<p style="color: red;">Ошибка загрузки данных</p>';
+                    return;
+                }
+                
+                const text = await res.text();
+                if (!text || text.trim() === '') {
+                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                        '<p>Нет данных для отображения</p>';
+                    return;
+                }
+                
+                let data;
+                try {
+                    data = JSON.parse(text);
+                } catch (e) {
+                    document.getElementById(`table-content-${itemId}`).innerHTML = 
+                        '<p style="color: red;">Ошибка парсинга данных</p>';
+                    console.error(`Failed to parse JSON for table item ${itemId}:`, e);
+                    return;
+                }
                 
                 const buyData = data.find(d => d.type === 'buy')?.data || [];
                 const sellData = data.find(d => d.type === 'sell')?.data || [];

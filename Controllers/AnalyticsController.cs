@@ -128,23 +128,39 @@ public class AnalyticsController : ControllerBase
         [FromQuery] int days = 7,
         CancellationToken cancellationToken = default)
     {
-        var result = new List<object>();
-
-        if (!buyOrders.HasValue || buyOrders.Value)
+        try
         {
-            var buyData = await _storageService.GetOrdersByTimeGroupingAsync(
-                itemId, true, grouping, days, cancellationToken);
-            result.Add(new { type = "buy", data = buyData });
-        }
+            // Проверяем существование предмета
+            using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            var item = await context.Items.FindAsync(new object[] { itemId }, cancellationToken);
+            if (item == null)
+            {
+                return NotFound(new { error = "Item not found" });
+            }
 
-        if (!buyOrders.HasValue || !buyOrders.Value)
+            var result = new List<object>();
+
+            if (!buyOrders.HasValue || buyOrders.Value)
+            {
+                var buyData = await _storageService.GetOrdersByTimeGroupingAsync(
+                    itemId, true, grouping, days, cancellationToken);
+                result.Add(new { type = "buy", data = buyData ?? new List<object>() });
+            }
+
+            if (!buyOrders.HasValue || !buyOrders.Value)
+            {
+                var sellData = await _storageService.GetOrdersByTimeGroupingAsync(
+                    itemId, false, grouping, days, cancellationToken);
+                result.Add(new { type = "sell", data = sellData ?? new List<object>() });
+            }
+
+            return Ok(result);
+        }
+        catch (Exception ex)
         {
-            var sellData = await _storageService.GetOrdersByTimeGroupingAsync(
-                itemId, false, grouping, days, cancellationToken);
-            result.Add(new { type = "sell", data = sellData });
+            _logger.LogError(ex, "Error getting time-series for item {ItemId}", itemId);
+            return StatusCode(500, new { error = "Internal server error", message = ex.Message });
         }
-
-        return Ok(result);
     }
 
     [HttpGet("items/{itemId}/price-history")]
