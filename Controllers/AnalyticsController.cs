@@ -78,46 +78,54 @@ public class AnalyticsController : ControllerBase
     [HttpGet("items/{itemId}/analytics")]
     public async Task<IActionResult> GetItemAnalytics(int itemId, CancellationToken cancellationToken)
     {
-        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        
-        var item = await context.Items.FindAsync(new object[] { itemId }, cancellationToken);
-        if (item == null)
+        try
         {
-            return NotFound();
-        }
-
-        var buyOrders = await context.Orders
-            .Where(o => o.ItemId == itemId && o.IsBuyOrder)
-            .OrderBy(o => o.Price)
-            .ToListAsync(cancellationToken);
-
-        var sellOrders = await context.Orders
-            .Where(o => o.ItemId == itemId && !o.IsBuyOrder)
-            .OrderByDescending(o => o.Price)
-            .ToListAsync(cancellationToken);
-
-        var analytics = new
-        {
-            item = new { item.Id, item.Name, item.ItemId, item.LastUpdated },
-            buyOrders = new
+            using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+            
+            var item = await context.Items.FindAsync(new object[] { itemId }, cancellationToken);
+            if (item == null)
             {
-                count = buyOrders.Count,
-                minPrice = buyOrders.Any() ? buyOrders.Min(o => o.Price) : (decimal?)null,
-                maxPrice = buyOrders.Any() ? buyOrders.Max(o => o.Price) : (decimal?)null,
-                totalQuantity = buyOrders.Sum(o => o.Quantity),
-                orders = buyOrders.Take(20).Select(o => new { o.Price, o.Quantity, o.CollectedAt })
-            },
-            sellOrders = new
-            {
-                count = sellOrders.Count,
-                minPrice = sellOrders.Any() ? sellOrders.Min(o => o.Price) : (decimal?)null,
-                maxPrice = sellOrders.Any() ? sellOrders.Max(o => o.Price) : (decimal?)null,
-                totalQuantity = sellOrders.Sum(o => o.Quantity),
-                orders = sellOrders.Take(20).Select(o => new { o.Price, o.Quantity, o.CollectedAt })
+                return NotFound(new { error = "Item not found" });
             }
-        };
 
-        return Ok(analytics);
+            var buyOrders = await context.Orders
+                .Where(o => o.ItemId == itemId && o.IsBuyOrder)
+                .OrderBy(o => o.Price)
+                .ToListAsync(cancellationToken);
+
+            var sellOrders = await context.Orders
+                .Where(o => o.ItemId == itemId && !o.IsBuyOrder)
+                .OrderByDescending(o => o.Price)
+                .ToListAsync(cancellationToken);
+
+            var analytics = new
+            {
+                item = new { item.Id, item.Name, item.ItemId, item.LastUpdated },
+                buyOrders = new
+                {
+                    count = buyOrders.Count,
+                    minPrice = buyOrders.Any() ? buyOrders.Min(o => o.Price) : (decimal?)null,
+                    maxPrice = buyOrders.Any() ? buyOrders.Max(o => o.Price) : (decimal?)null,
+                    totalQuantity = buyOrders.Sum(o => o.Quantity),
+                    orders = buyOrders.Take(20).Select(o => new { o.Price, o.Quantity, o.CollectedAt })
+                },
+                sellOrders = new
+                {
+                    count = sellOrders.Count,
+                    minPrice = sellOrders.Any() ? sellOrders.Min(o => o.Price) : (decimal?)null,
+                    maxPrice = sellOrders.Any() ? sellOrders.Max(o => o.Price) : (decimal?)null,
+                    totalQuantity = sellOrders.Sum(o => o.Quantity),
+                    orders = sellOrders.Take(20).Select(o => new { o.Price, o.Quantity, o.CollectedAt })
+                }
+            };
+
+            return Ok(analytics);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting analytics for item {ItemId}", itemId);
+            return StatusCode(500, new { error = "Internal server error", message = ex.Message });
+        }
     }
 
     [HttpGet("items/{itemId}/time-series")]
