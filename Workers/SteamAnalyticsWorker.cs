@@ -1,19 +1,23 @@
-using SteamAnaliticWorker.Models;
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 using SteamAnaliticWorker.Services;
 
 namespace SteamAnaliticWorker.Workers;
 
 public class SteamAnalyticsWorker : BackgroundService
 {
-    private readonly IServiceProvider _serviceProvider;
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<SteamAnalyticsWorker> _logger;
     private readonly TimeSpan _period = TimeSpan.FromHours(1);
 
     public SteamAnalyticsWorker(
-        IServiceProvider serviceProvider,
+        IServiceScopeFactory scopeFactory,
         ILogger<SteamAnalyticsWorker> logger)
     {
-        _serviceProvider = serviceProvider;
+        _scopeFactory = scopeFactory;
         _logger = logger;
     }
 
@@ -40,44 +44,9 @@ public class SteamAnalyticsWorker : BackgroundService
     {
         _logger.LogInformation("Starting analytics collection at {Time}", DateTime.UtcNow);
 
-        using var scope = _serviceProvider.CreateScope();
-        var steamService = scope.ServiceProvider.GetRequiredService<SteamAnalyticsService>();
-        var storageService = scope.ServiceProvider.GetRequiredService<DataStorageService>();
-
-        var items = await storageService.GetAllItemsAsync(cancellationToken);
-
-        if (items.Count == 0)
-        {
-            _logger.LogWarning("No items configured. Please add items to track.");
-            return;
-        }
-
-        foreach (var item in items)
-        {
-            try
-            {
-                // Собираем заказы на покупку
-                var buyOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: true, cancellationToken);
-                if (buyOrders.Count > 0)
-                {
-                    await storageService.SaveBuyOrdersAsync(buyOrders, cancellationToken);
-                }
-
-                // Собираем заказы на продажу
-                var sellOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: false, cancellationToken);
-                if (sellOrders.Count > 0)
-                {
-                    await storageService.SaveSellOrdersAsync(sellOrders, cancellationToken);
-                }
-
-                // Небольшая задержка между запросами, чтобы не перегружать API
-                await Task.Delay(1000, cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error processing item {ItemName} (ItemId: {ItemId})", item.Name, item.ItemId);
-            }
-        }
+        using var scope = _scopeFactory.CreateScope();
+        var orchestrator = scope.ServiceProvider.GetRequiredService<ICollectionOrchestrator>();
+        await orchestrator.CollectAsync(cancellationToken);
 
         _logger.LogInformation("Analytics collection completed at {Time}", DateTime.UtcNow);
     }

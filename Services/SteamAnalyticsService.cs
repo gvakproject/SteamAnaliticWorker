@@ -1,3 +1,6 @@
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using System.Net.Http;
 using System.Text.Json;
 using SteamAnaliticWorker.Models;
@@ -39,9 +42,9 @@ public class SteamAnalyticsService
                 item.ItemId,
                 url);
 
-            var response = await GetResponseAsync(url, cancellationToken: cancellationToken);
-            var content = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var json = await JsonDocument.ParseAsync(content, cancellationToken: cancellationToken);
+            using var response = await GetResponseAsync(url, cancellationToken: cancellationToken);
+            using var contentStream = await response.Content.ReadAsStreamAsync(cancellationToken);
+            var json = await JsonDocument.ParseAsync(contentStream, cancellationToken: cancellationToken);
 
             var jsonProperty = isBuyOrder ? "buy_order_graph" : "sell_order_graph";
             orders = await GetOrdersAsync(json, jsonProperty, item.Id, isBuyOrder);

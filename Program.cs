@@ -31,6 +31,7 @@ builder.Services.AddDbContextFactory<ApplicationDbContext>(options =>
 builder.Services.AddHttpClient<SteamAnalyticsService>();
 builder.Services.AddScoped<SteamAnalyticsService>();
 builder.Services.AddScoped<DataStorageService>();
+builder.Services.AddScoped<ICollectionOrchestrator, CollectionOrchestrator>();
 
 // Background Worker
 builder.Services.AddHostedService<SteamAnalyticsWorker>();

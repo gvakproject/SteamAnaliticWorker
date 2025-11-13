@@ -32,7 +32,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.ItemId, e.Price });
             entity.HasIndex(e => new { e.ItemId, e.CollectedAt });
             entity.HasOne(e => e.Item)
-                .WithMany()
+                .WithMany(i => i.BuyOrders)
                 .HasForeignKey(e => e.ItemId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
@@ -43,7 +43,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.ItemId, e.Price });
             entity.HasIndex(e => new { e.ItemId, e.CollectedAt });
             entity.HasOne(e => e.Item)
-                .WithMany()
+                .WithMany(i => i.SellOrders)
                 .HasForeignKey(e => e.ItemId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

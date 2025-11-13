@@ -86,3 +86,6 @@ ScaffoldingReadMe.txt
 # Docker
 .dockerignore
 
+data/
+data/*.db
+data/*.db-*

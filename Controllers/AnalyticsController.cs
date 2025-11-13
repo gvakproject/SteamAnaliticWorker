@@ -1,7 +1,11 @@
+using System.Threading;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using SteamAnaliticWorker.Data;
 using SteamAnaliticWorker.Models;
+using SteamAnaliticWorker.Models.Dtos;
 using SteamAnaliticWorker.Services;
 
 namespace SteamAnaliticWorker.Controllers;
@@ -13,15 +17,18 @@ public class AnalyticsController : ControllerBase
     private readonly IDbContextFactory<ApplicationDbContext> _dbContextFactory;
     private readonly DataStorageService _storageService;
     private readonly ILogger<AnalyticsController> _logger;
+    private readonly IServiceScopeFactory _scopeFactory;
 
     public AnalyticsController(
         IDbContextFactory<ApplicationDbContext> dbContextFactory,
         DataStorageService storageService,
-        ILogger<AnalyticsController> logger)
+        ILogger<AnalyticsController> logger,
+        IServiceScopeFactory scopeFactory)
     {
         _dbContextFactory = dbContextFactory;
         _storageService = storageService;
         _logger = logger;
+        _scopeFactory = scopeFactory;
     }
 
     [HttpGet("summary")]
@@ -151,20 +158,20 @@ public class AnalyticsController : ControllerBase
                 return NotFound(new { error = "Item not found" });
             }
 
-            var result = new List<object>();
+            var result = new List<OrderSeries>();
 
             if (!buyOrders.HasValue || buyOrders.Value)
             {
                 var buyData = await _storageService.GetOrdersByTimeGroupingAsync(
                     itemId, true, grouping, days, cancellationToken);
-                result.Add(new { type = "buy", data = buyData ?? new List<object>() });
+                result.Add(new OrderSeries("buy", buyData));
             }
 
             if (!buyOrders.HasValue || !buyOrders.Value)
             {
                 var sellData = await _storageService.GetOrdersByTimeGroupingAsync(
                     itemId, false, grouping, days, cancellationToken);
-                result.Add(new { type = "sell", data = sellData ?? new List<object>() });
+                result.Add(new OrderSeries("sell", sellData));
             }
 
             return Ok(result);
@@ -183,7 +190,7 @@ public class AnalyticsController : ControllerBase
         [FromQuery] int days = 7,
         CancellationToken cancellationToken = default)
     {
-        var result = new Dictionary<string, object>();
+        var result = new Dictionary<string, List<OrderSnapshot>>();
 
         if (!buyOrders.HasValue || buyOrders.Value)
         {
@@ -207,47 +214,26 @@ public class AnalyticsController : ControllerBase
     {
         try
         {
-            // Запускаем сбор данных в фоне
+            var scopeFactory = _scopeFactory;
+
             _ = Task.Run(async () =>
             {
-                using var scope = HttpContext.RequestServices.CreateScope();
-                var steamService = scope.ServiceProvider.GetRequiredService<SteamAnalyticsService>();
-                var storageService = scope.ServiceProvider.GetRequiredService<DataStorageService>();
+                using var scope = scopeFactory.CreateScope();
+                var orchestrator = scope.ServiceProvider.GetRequiredService<ICollectionOrchestrator>();
 
-                var items = await storageService.GetAllItemsAsync(cancellationToken);
+                using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(TimeSpan.FromMinutes(5));
 
-                if (items.Count == 0)
+                try
                 {
-                    _logger.LogWarning("No items configured for manual collection");
-                    return;
+                    await orchestrator.CollectAsync(cts.Token);
+                    _logger.LogInformation("Manual collection completed");
                 }
-
-                foreach (var item in items)
+                catch (OperationCanceledException)
                 {
-                    try
-                    {
-                        var buyOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: true, cancellationToken);
-                        if (buyOrders.Count > 0)
-                        {
-                            await storageService.SaveBuyOrdersAsync(buyOrders, cancellationToken);
-                        }
-
-                        var sellOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: false, cancellationToken);
-                        if (sellOrders.Count > 0)
-                        {
-                            await storageService.SaveSellOrdersAsync(sellOrders, cancellationToken);
-                        }
-
-                        await Task.Delay(1000, cancellationToken);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Error processing item {ItemName} in manual collection", item.Name);
-                    }
+                    _logger.LogWarning("Manual collection cancelled or timed out");
                 }
-
-                _logger.LogInformation("Manual collection completed");
-            }, cancellationToken);
+            }, CancellationToken.None);
 
             return Task.FromResult<IActionResult>(Ok(new { message = "Collection started", timestamp = DateTime.UtcNow }));
         }

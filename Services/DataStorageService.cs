@@ -1,6 +1,10 @@
+using System.Threading;
+using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 using Microsoft.EntityFrameworkCore;
 using SteamAnaliticWorker.Data;
 using SteamAnaliticWorker.Models;
+using SteamAnaliticWorker.Models.Dtos;
 
 namespace SteamAnaliticWorker.Services;
 
@@ -51,11 +55,49 @@ public class DataStorageService
         }
     }
 
-    public async Task SaveBuyOrdersAsync(List<Order> orders, CancellationToken cancellationToken = default)
+    public Task SaveBuyOrdersAsync(List<Order> orders, CancellationToken cancellationToken = default) =>
+        SaveOrdersAsync(
+            orders,
+            context => context.BuyOrders,
+            order => new BuyOrderRecord
+            {
+                ItemId = order.ItemId,
+                Price = order.Price,
+                Quantity = order.Quantity,
+                CollectedAt = order.CollectedAt
+            },
+            "buy",
+            cancellationToken);
+
+    public Task SaveSellOrdersAsync(List<Order> orders, CancellationToken cancellationToken = default) =>
+        SaveOrdersAsync(
+            orders,
+            context => context.SellOrders,
+            order => new SellOrderRecord
+            {
+                ItemId = order.ItemId,
+                Price = order.Price,
+                Quantity = order.Quantity,
+                CollectedAt = order.CollectedAt
+            },
+            "sell",
+            cancellationToken);
+
+    private async Task SaveOrdersAsync<TRecord>(
+        List<Order> orders,
+        Func<ApplicationDbContext, DbSet<TRecord>> setSelector,
+        Func<Order, TRecord> recordSelector,
+        string orderType,
+        CancellationToken cancellationToken)
+        where TRecord : class, IOrderRecord
     {
-        if (orders.Count == 0) return;
+        if (orders.Count == 0)
+        {
+            return;
+        }
 
         using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
+        var set = setSelector(context);
 
         var itemIds = orders.Select(o => o.ItemId).Distinct().ToList();
 
@@ -63,88 +105,43 @@ public class DataStorageService
         var hourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc);
         var hourEnd = hourStart.AddHours(1);
 
-        var duplicateOrders = await context.BuyOrders
+        var duplicates = await set
             .Where(o => itemIds.Contains(o.ItemId) &&
                         o.CollectedAt >= hourStart &&
                         o.CollectedAt < hourEnd)
             .ToListAsync(cancellationToken);
 
-        if (duplicateOrders.Count > 0)
+        if (duplicates.Count > 0)
         {
-            context.BuyOrders.RemoveRange(duplicateOrders);
+            set.RemoveRange(duplicates);
         }
 
         var oldCutoff = DateTime.UtcNow.AddDays(-30);
-        var veryOldOrders = await context.BuyOrders
+        var oldRecords = await set
             .Where(o => o.CollectedAt < oldCutoff)
             .ToListAsync(cancellationToken);
 
-        if (veryOldOrders.Count > 0)
+        if (oldRecords.Count > 0)
         {
-            context.BuyOrders.RemoveRange(veryOldOrders);
-            _logger.LogInformation("Removed {Count} old buy orders (older than 30 days)", veryOldOrders.Count);
+            set.RemoveRange(oldRecords);
+            _logger.LogInformation("Removed {Count} old {Type} orders (older than 30 days)", oldRecords.Count, orderType);
         }
 
-        var buyRecords = orders.Select(o => new BuyOrderRecord
-        {
-            ItemId = o.ItemId,
-            Price = o.Price,
-            Quantity = o.Quantity,
-            CollectedAt = o.CollectedAt
-        });
+        set.AddRange(orders.Select(recordSelector));
 
-        context.BuyOrders.AddRange(buyRecords);
-        await context.SaveChangesAsync(cancellationToken);
-
-        _logger.LogInformation("Saved {Count} buy orders to database", orders.Count);
-    }
-
-    public async Task SaveSellOrdersAsync(List<Order> orders, CancellationToken cancellationToken = default)
-    {
-        if (orders.Count == 0) return;
-
-        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-
-        var itemIds = orders.Select(o => o.ItemId).Distinct().ToList();
-
-        var now = DateTime.UtcNow;
-        var hourStart = new DateTime(now.Year, now.Month, now.Day, now.Hour, 0, 0, DateTimeKind.Utc);
-        var hourEnd = hourStart.AddHours(1);
-
-        var duplicateOrders = await context.SellOrders
-            .Where(o => itemIds.Contains(o.ItemId) &&
-                        o.CollectedAt >= hourStart &&
-                        o.CollectedAt < hourEnd)
+        var itemsToUpdate = await context.Items
+            .Where(i => itemIds.Contains(i.Id))
             .ToListAsync(cancellationToken);
 
-        if (duplicateOrders.Count > 0)
+        var timestamp = DateTime.UtcNow;
+        foreach (var item in itemsToUpdate)
         {
-            context.SellOrders.RemoveRange(duplicateOrders);
+            item.LastUpdated = timestamp;
         }
 
-        var oldCutoff = DateTime.UtcNow.AddDays(-30);
-        var veryOldOrders = await context.SellOrders
-            .Where(o => o.CollectedAt < oldCutoff)
-            .ToListAsync(cancellationToken);
-
-        if (veryOldOrders.Count > 0)
-        {
-            context.SellOrders.RemoveRange(veryOldOrders);
-            _logger.LogInformation("Removed {Count} old sell orders (older than 30 days)", veryOldOrders.Count);
-        }
-
-        var sellRecords = orders.Select(o => new SellOrderRecord
-        {
-            ItemId = o.ItemId,
-            Price = o.Price,
-            Quantity = o.Quantity,
-            CollectedAt = o.CollectedAt
-        });
-
-        context.SellOrders.AddRange(sellRecords);
         await context.SaveChangesAsync(cancellationToken);
 
-        _logger.LogInformation("Saved {Count} sell orders to database", orders.Count);
+        _logger.LogInformation("Saved {Count} {Type} orders to database", orders.Count, orderType);
     }
 
     public async Task<List<Order>> GetLatestOrdersAsync(int itemId, bool isBuyOrder, int limit = 100, CancellationToken cancellationToken = default)
@@ -207,7 +204,7 @@ public class DataStorageService
         };
     }
 
-    public async Task<List<object>> GetOrdersByTimeGroupingAsync(
+    public async Task<List<GroupedOrders>> GetOrdersByTimeGroupingAsync(
         int itemId, 
         bool isBuyOrder, 
         string grouping = "hour",
@@ -234,7 +231,7 @@ public class DataStorageService
 
             if (orders.Count == 0)
             {
-                return new List<object>();
+                return new List<GroupedOrders>();
             }
 
             var grouped = grouping.ToLower() switch
@@ -258,24 +255,23 @@ public class DataStorageService
                     0, 0, DateTimeKind.Utc))
             };
 
-            return grouped.Select(g => new
-            {
-                time = g.Key,
-                avgPrice = g.Average(o => o.Price),
-                minPrice = g.Min(o => o.Price),
-                maxPrice = g.Max(o => o.Price),
-                totalQuantity = g.Sum(o => o.Quantity),
-                orderCount = g.Count()
-            }).Cast<object>().ToList();
+            return grouped.Select(g => new GroupedOrders(
+                g.Key,
+                g.Average(o => o.Price),
+                g.Min(o => o.Price),
+                g.Max(o => o.Price),
+                g.Sum(o => o.Quantity),
+                g.Count()))
+                .ToList();
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error getting orders by time grouping for item {ItemId}", itemId);
-            return new List<object>();
+            return new List<GroupedOrders>();
         }
     }
 
-    public async Task<List<object>> GetPriceHistoryAsync(
+    public async Task<List<OrderSnapshot>> GetPriceHistoryAsync(
         int itemId,
         bool isBuyOrder,
         int days = 7,
@@ -297,7 +293,9 @@ public class DataStorageService
             .OrderBy(o => o.CollectedAt)
             .ToListAsync(cancellationToken);
 
-        return orders.Cast<object>().ToList();
+        return orders
+            .Select(o => new OrderSnapshot(o.Price, o.Quantity, o.CollectedAt))
+            .ToList();
     }
 }
 

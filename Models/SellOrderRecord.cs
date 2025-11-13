@@ -1,6 +1,6 @@
 namespace SteamAnaliticWorker.Models;
 
-public class SellOrderRecord
+public class SellOrderRecord : IOrderRecord
 {
     public int Id { get; set; }
     public int ItemId { get; set; }
