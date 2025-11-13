@@ -853,14 +853,15 @@
                 month: '2-digit',
                 day: '2-digit',
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                timeZone: 'UTC'
             });
         }
 
         function formatTime(value) {
             const tzDate = convertToTimezone(value);
             if (!tzDate) return '--:--';
-            return tzDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+            return tzDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
         }
 
         function formatCurrency(value) {
