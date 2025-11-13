@@ -806,13 +806,12 @@
             if (!value && value !== 0) return null;
 
             if (value instanceof Date) {
-                const copy = new Date(value.getTime());
-                return Number.isNaN(copy.getTime()) ? null : copy;
+                const millis = value.getTime();
+                return Number.isNaN(millis) ? null : millis;
             }
 
             if (typeof value === 'number') {
-                const fromNumber = new Date(value);
-                return Number.isNaN(fromNumber.getTime()) ? null : fromNumber;
+                return Number.isNaN(value) ? null : value;
             }
 
             if (typeof value === 'string') {
@@ -823,26 +822,25 @@
                     isoString += 'Z';
                 }
 
-                const parsed = new Date(isoString);
-                return Number.isNaN(parsed.getTime()) ? null : parsed;
+                const parsed = Date.parse(isoString);
+                return Number.isNaN(parsed) ? null : parsed;
             }
 
             return null;
         }
 
-        function applyTimezone(rawUtcDate) {
-            if (!(rawUtcDate instanceof Date) || Number.isNaN(rawUtcDate.getTime())) {
+        function applyTimezone(utcMillis) {
+            if (typeof utcMillis !== 'number' || Number.isNaN(utcMillis)) {
                 return null;
             }
 
-            const utcMillis = rawUtcDate.getTime();
             return new Date(utcMillis + currentTimezoneOffsetMinutes * 60000);
         }
 
         function convertToTimezone(value) {
-            const utcDate = parseAsUtc(value);
-            if (!utcDate) return null;
-            return applyTimezone(utcDate);
+            const utcMillis = parseAsUtc(value);
+            if (!utcMillis) return null;
+            return applyTimezone(utcMillis);
         }
 
         function formatDateTime(value) {
@@ -867,6 +865,7 @@
         function formatCurrency(value) {
             const num = Number(value);
             if (Number.isNaN(num)) return '—';
+            if (num === 0) return '<strong>Total</strong>';
             return `${num.toFixed(2)} ₸`;
         }
 
@@ -877,9 +876,9 @@
         }
 
         function formatDateKey(date) {
-            const year = date.getFullYear();
-            const month = String(date.getMonth() + 1).padStart(2, '0');
-            const day = String(date.getDate()).padStart(2, '0');
+            const year = date.getUTCFullYear();
+            const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(date.getUTCDate()).padStart(2, '0');
             return `${year}-${month}-${day}`;
         }
 
@@ -1220,12 +1219,13 @@
                         const dateLabel = entries[0].tzDate.toLocaleDateString('ru-RU', {
                             day: '2-digit',
                             month: '2-digit',
-                            year: 'numeric'
+                            year: 'numeric',
+                            timeZone: 'UTC'
                         });
 
                         const timeGroups = new Map();
                         entries.forEach(entry => {
-                            const timeKey = entry.tzDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+                            const timeKey = entry.tzDate.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: 'UTC' });
                             if (!timeGroups.has(timeKey)) {
                                 timeGroups.set(timeKey, []);
                             }

@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -48,6 +49,7 @@ public class SteamAnalyticsService
 
             var jsonProperty = isBuyOrder ? "buy_order_graph" : "sell_order_graph";
             orders = await GetOrdersAsync(json, jsonProperty, item.Id, isBuyOrder);
+            AppendAggregateOrder(json.RootElement, orders, item.Id, isBuyOrder);
             
             _logger.LogInformation(
                 "Collected {Count} {Type} orders for {ItemName} (ItemId: {ItemId})",
@@ -115,6 +117,46 @@ public class SteamAnalyticsService
         }
 
         return Task.FromResult(orders);
+    }
+
+    private static void AppendAggregateOrder(
+        JsonElement root,
+        List<Order> orders,
+        int itemId,
+        bool isBuyOrder)
+    {
+        var propertyName = isBuyOrder ? "buy_order_count" : "sell_order_count";
+
+        if (!root.TryGetProperty(propertyName, out var countProperty))
+        {
+            return;
+        }
+
+        var parsedCount = ParseOrderCount(countProperty.GetString());
+        if (!parsedCount.HasValue || parsedCount.Value <= 0)
+        {
+            return;
+        }
+
+        orders.Add(new Order
+        {
+            ItemId = itemId,
+            Price = 0m,
+            Quantity = parsedCount.Value,
+            IsBuyOrder = isBuyOrder,
+            CollectedAt = DateTime.UtcNow
+        });
+    }
+
+    private static int? ParseOrderCount(string? rawValue)
+    {
+        if (string.IsNullOrWhiteSpace(rawValue))
+        {
+            return null;
+        }
+
+        var digitsOnly = new string(rawValue.Where(char.IsDigit).ToArray());
+        return int.TryParse(digitsOnly, out var parsed) ? parsed : null;
     }
 
     private async Task<HttpResponseMessage> GetResponseAsync(
