@@ -11,8 +11,8 @@ public class ApplicationDbContext : DbContext
     }
 
     public DbSet<Item> Items { get; set; }
-    public DbSet<Order> Orders { get; set; }
-    public DbSet<SellHistory> SellHistories { get; set; }
+    public DbSet<BuyOrderRecord> BuyOrders { get; set; }
+    public DbSet<SellOrderRecord> SellOrders { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -26,21 +26,23 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.ItemId).IsRequired();
         });
 
-        modelBuilder.Entity<Order>(entity =>
+        modelBuilder.Entity<BuyOrderRecord>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.ItemId, e.IsBuyOrder, e.Price });
-            entity.HasOne<Item>()
+            entity.HasIndex(e => new { e.ItemId, e.Price });
+            entity.HasIndex(e => new { e.ItemId, e.CollectedAt });
+            entity.HasOne(e => e.Item)
                 .WithMany()
                 .HasForeignKey(e => e.ItemId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
-        modelBuilder.Entity<SellHistory>(entity =>
+        modelBuilder.Entity<SellOrderRecord>(entity =>
         {
             entity.HasKey(e => e.Id);
-            entity.HasIndex(e => new { e.ItemId, e.SoldAt });
-            entity.HasOne<Item>()
+            entity.HasIndex(e => new { e.ItemId, e.Price });
+            entity.HasIndex(e => new { e.ItemId, e.CollectedAt });
+            entity.HasOne(e => e.Item)
                 .WithMany()
                 .HasForeignKey(e => e.ItemId)
                 .OnDelete(DeleteBehavior.Cascade);

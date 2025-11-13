@@ -60,14 +60,14 @@ public class SteamAnalyticsWorker : BackgroundService
                 var buyOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: true, cancellationToken);
                 if (buyOrders.Count > 0)
                 {
-                    await storageService.SaveOrdersAsync(buyOrders, cancellationToken);
+                    await storageService.SaveBuyOrdersAsync(buyOrders, cancellationToken);
                 }
 
                 // Собираем заказы на продажу
                 var sellOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: false, cancellationToken);
                 if (sellOrders.Count > 0)
                 {
-                    await storageService.SaveOrdersAsync(sellOrders, cancellationToken);
+                    await storageService.SaveSellOrdersAsync(sellOrders, cancellationToken);
                 }
 
                 // Небольшая задержка между запросами, чтобы не перегружать API

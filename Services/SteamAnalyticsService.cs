@@ -75,7 +75,7 @@ public class SteamAnalyticsService
         return orders;
     }
 
-    private Task<List<Order>> GetOrdersAsync(JsonDocument json, string jsonProperty, int itemId, bool isBuyOrder)
+    private Task<List<Order>> GetOrdersAsync(JsonDocument json, string jsonProperty, int itemId, bool isBuyOrder, int limit = 15)
     {
         var orders = new List<Order>();
         var now = DateTime.UtcNow;
@@ -85,6 +85,11 @@ public class SteamAnalyticsService
             int prevQuantity = 0;
             foreach (var order in orderResult.EnumerateArray())
             {
+                if (orders.Count >= limit)
+                {
+                    break;
+                }
+
                 if (order.GetArrayLength() >= 2)
                 {
                     int cumulative = order[1].GetInt32();

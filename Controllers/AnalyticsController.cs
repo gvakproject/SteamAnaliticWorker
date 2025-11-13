@@ -45,21 +45,25 @@ public class AnalyticsController : ControllerBase
         [FromQuery] int limit = 100,
         CancellationToken cancellationToken = default)
     {
-        using var context = await _dbContextFactory.CreateDbContextAsync(cancellationToken);
-        
-        var query = context.Orders.Where(o => o.ItemId == itemId);
-        
+        var takeLimit = Math.Max(1, limit);
+
         if (buyOrders.HasValue)
         {
-            query = query.Where(o => o.IsBuyOrder == buyOrders.Value);
+            var filtered = await _storageService.GetLatestOrdersAsync(itemId, buyOrders.Value, takeLimit, cancellationToken);
+            return Ok(filtered);
         }
-        
-        var orders = await query
-            .OrderByDescending(o => o.CollectedAt)
-            .Take(limit)
-            .ToListAsync(cancellationToken);
-        
-        return Ok(orders);
+        else
+        {
+            var buy = await _storageService.GetLatestOrdersAsync(itemId, true, takeLimit, cancellationToken);
+            var sell = await _storageService.GetLatestOrdersAsync(itemId, false, takeLimit, cancellationToken);
+
+            var combined = buy.Concat(sell)
+                .OrderByDescending(o => o.CollectedAt)
+                .Take(takeLimit)
+                .ToList();
+
+            return Ok(combined);
+        }
     }
 
     [HttpPost("items")]
@@ -89,15 +93,15 @@ public class AnalyticsController : ControllerBase
             }
 
             // SQLite не поддерживает сортировку по decimal в ORDER BY, поэтому загружаем данные и сортируем в памяти
-            var buyOrders = await context.Orders
-                .Where(o => o.ItemId == itemId && o.IsBuyOrder)
+            var buyOrdersRaw = await context.BuyOrders
+                .Where(o => o.ItemId == itemId)
                 .ToListAsync(cancellationToken);
-            buyOrders = buyOrders.OrderBy(o => o.Price).ToList();
+            var buyOrders = buyOrdersRaw.OrderBy(o => o.Price).ToList();
 
-            var sellOrders = await context.Orders
-                .Where(o => o.ItemId == itemId && !o.IsBuyOrder)
+            var sellOrdersRaw = await context.SellOrders
+                .Where(o => o.ItemId == itemId)
                 .ToListAsync(cancellationToken);
-            sellOrders = sellOrders.OrderByDescending(o => o.Price).ToList();
+            var sellOrders = sellOrdersRaw.OrderByDescending(o => o.Price).ToList();
 
             var analytics = new
             {
@@ -225,13 +229,13 @@ public class AnalyticsController : ControllerBase
                         var buyOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: true, cancellationToken);
                         if (buyOrders.Count > 0)
                         {
-                            await storageService.SaveOrdersAsync(buyOrders, cancellationToken);
+                            await storageService.SaveBuyOrdersAsync(buyOrders, cancellationToken);
                         }
 
                         var sellOrders = await steamService.GetItemOrdersAsync(item, isBuyOrder: false, cancellationToken);
                         if (sellOrders.Count > 0)
                         {
-                            await storageService.SaveOrdersAsync(sellOrders, cancellationToken);
+                            await storageService.SaveSellOrdersAsync(sellOrders, cancellationToken);
                         }
 
                         await Task.Delay(1000, cancellationToken);
